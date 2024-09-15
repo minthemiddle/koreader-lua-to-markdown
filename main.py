@@ -15,7 +15,7 @@ def format_authors(authors):
 def generate_markdown(metadata):
     md = f"# {metadata['stats']['title']} - {format_authors(metadata['stats']['authors'])}\n\n"
 
-    for bookmark in metadata['bookmarks'].values():
+    for bookmark in reversed(list(metadata['bookmarks'].values())):
         if 'notes' not in bookmark:
             continue
 

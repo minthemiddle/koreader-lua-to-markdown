@@ -1,11 +1,12 @@
-import lua
+from lupa import LuaRuntime
 import sys
 import re
 
 def parse_lua(file_path):
+    lua = LuaRuntime(unpack_returned_tuples=True)
     with open(file_path, 'r') as file:
         lua_content = file.read()
-    return lua.decode(lua_content)
+    return lua.eval(lua_content)
 
 def format_authors(authors):
     return '; '.join(f"{name.split()[-1]}, {' '.join(name.split()[:-1])}" for name in authors.split(', '))

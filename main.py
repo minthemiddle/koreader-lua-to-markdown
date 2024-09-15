@@ -6,7 +6,8 @@ def parse_lua(file_path):
     lua = LuaRuntime(unpack_returned_tuples=True)
     with open(file_path, 'r') as file:
         lua_content = file.read()
-    return lua.eval(lua_content)
+    wrapped_content = f"function() {lua_content} end"
+    return lua.eval(wrapped_content)()
 
 def format_authors(authors):
     return '; '.join(f"{name.split()[-1]}, {' '.join(name.split()[:-1])}" for name in authors.split(', '))

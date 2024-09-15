@@ -1,5 +1,6 @@
 import lua
 import sys
+import re
 
 def parse_lua(file_path):
     with open(file_path, 'r') as file:
@@ -25,6 +26,10 @@ def generate_markdown(metadata):
 
     return md.strip()
 
+def slugify(text):
+    text = text.lower()
+    return re.sub(r'[^\w\s-]', '', re.sub(r'[\s]+', '-', text)).strip('-')
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         print("Usage: python script.py <path_to_lua_file>")
@@ -33,4 +38,12 @@ if __name__ == "__main__":
     lua_file = sys.argv[1]
     metadata = parse_lua(lua_file)
     markdown = generate_markdown(metadata)
-    print(markdown)
+    
+    # Create a slugified filename based on the book title
+    filename = slugify(metadata['stats']['title']) + '.md'
+    
+    # Save the markdown to the file
+    with open(filename, 'w') as f:
+        f.write(markdown)
+    
+    print(f"Markdown saved to {filename}")

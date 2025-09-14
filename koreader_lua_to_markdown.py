@@ -2,6 +2,7 @@
 # dependencies = [
 #   "lupa",
 #   "click",
+#   "toml",
 # ]
 # ///
 
@@ -13,6 +14,7 @@ from pathlib import Path
 from typing import Dict, Any, Optional, Tuple
 
 import click
+import toml
 from lupa import LuaRuntime
 
 # Configure logging
@@ -21,6 +23,107 @@ logging.basicConfig(
     format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# Default configuration
+DEFAULT_CONFIG = {
+    "output": {
+        "filename_template": "{timestamp}.md",
+    },
+    "templates": {
+        "yaml_frontmatter": """---
+tags: [buch, gelesen, highlights]
+title: {title}
+author: {lastname}, {firstname}{rating}{note}{date_created}{date_updated}
+---
+
+""",
+        "intro": "Highlights für das Buch {title} von {firstname} {lastname}",
+        "summary_note": "> {note}",
+        "highlight": "> {text}",
+        "annotation": "Eigener Gedanke{page}: {annotation}{time}",
+        "separator": "---",
+    }
+}
+
+
+def load_config(config_path: Optional[Path] = None) -> Dict[str, Any]:
+    """
+    Load configuration from TOML file.
+
+    Args:
+        config_path: Path to configuration file
+
+    Returns:
+        Configuration dictionary
+    """
+    if config_path is None:
+        # Look for config in current directory
+        config_path = Path("koreader_converter.toml")
+
+    if not config_path.exists():
+        logger.debug(f"No config file found at {config_path}, using defaults")
+        return DEFAULT_CONFIG
+
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config = toml.load(f)
+        logger.info(f"Loaded configuration from {config_path}")
+
+        # Deep merge with defaults to ensure all required keys exist
+        result = DEFAULT_CONFIG.copy()
+
+        # Merge output section
+        if 'output' in config:
+            result['output'].update(config['output'])
+
+        # Merge templates section
+        if 'templates' in config:
+            result['templates'].update(config['templates'])
+
+        return result
+    except Exception as e:
+        logger.error(f"Failed to load config from {config_path}: {e}")
+        return DEFAULT_CONFIG
+
+
+def format_template(template: str, **kwargs) -> str:
+    """
+    Format a template string with provided variables.
+
+    Args:
+        template: Template string with placeholders
+        **kwargs: Variables to substitute
+
+    Returns:
+        Formatted string
+    """
+    try:
+        # Handle special formatting for page and time in annotations
+        formatted_kwargs = {}
+        for key, value in kwargs.items():
+            if key == 'page' and value:
+                formatted_kwargs[key] = f" (Seite {value})"
+            elif key == 'time' and value:
+                formatted_kwargs[key] = f" @ {value}"
+            else:
+                formatted_kwargs[key] = value
+
+        # Format the template
+        result = template.format(**formatted_kwargs)
+
+        # Remove lines that contain only empty placeholders (for YAML)
+        lines = result.split('\n')
+        cleaned_lines = []
+        for line in lines:
+            # Skip lines that have empty field values (like "rating: " or "note: ")
+            if not line.strip().endswith(':') or not line.strip().endswith(': '):
+                cleaned_lines.append(line)
+
+        return '\n'.join(cleaned_lines)
+    except KeyError as e:
+        logger.warning(f"Missing placeholder in template: {e}")
+        return template
 
 
 def parse_lua(file_path: Path) -> Dict[str, Any]:
@@ -58,16 +161,19 @@ def parse_lua(file_path: Path) -> Dict[str, Any]:
         raise ValueError(f"Failed to parse Lua file: {e}")
 
 
-def generate_markdown(metadata: Dict[str, Any]) -> Tuple[str, str]:
+def generate_markdown(metadata: Dict[str, Any], config: Dict[str, Any] = None) -> Tuple[str, str]:
     """
     Generate markdown content from KOReader metadata with YAML frontmatter.
 
     Args:
         metadata: Dictionary containing KOReader metadata
+        config: Configuration dictionary with templates
 
     Returns:
         Tuple of (markdown_content, timestamp_string)
     """
+    if config is None:
+        config = DEFAULT_CONFIG
     logger.info("Generating markdown content")
 
     try:
@@ -125,32 +231,37 @@ def generate_markdown(metadata: Dict[str, Any]) -> Tuple[str, str]:
         if timestamp is None:
             timestamp = generate_timestamp()
 
-        # Generate YAML frontmatter
-        yaml_frontmatter = f"""---
-tags: [buch, gelesen, highlights]
-title: {title}
-author: {lastname}, {firstname}"""
+        # Generate YAML frontmatter using template
+        templates = config['templates']
+        rating_value = rating if rating is not None else ""
+        note_value = summary_note if summary_note else ""
+        date_created_value = format_date_for_yaml(created_at) if created_at else ""
+        date_updated_value = format_date_for_yaml(updated_at) if updated_at else ""
 
-        if rating is not None:
-            yaml_frontmatter += f"\nrating: {rating}"
+        yaml_frontmatter = format_template(
+            templates['yaml_frontmatter'],
+            title=title,
+            lastname=lastname,
+            firstname=firstname,
+            rating=rating_value,
+            note=note_value,
+            date_created=date_created_value,
+            date_updated=date_updated_value
+        )
+
+        # Generate intro text using template
+        intro_text = format_template(
+            templates['intro'],
+            title=title,
+            firstname=firstname,
+            lastname=lastname
+        )
 
         if summary_note:
-            yaml_frontmatter += f"\nnote: {summary_note}"
-
-        if created_at:
-            date_created = format_date_for_yaml(created_at)
-            yaml_frontmatter += f"\ndate_created: {date_created}"
-
-        if updated_at:
-            date_updated = format_date_for_yaml(updated_at)
-            yaml_frontmatter += f"\ndate_updated: {date_updated}"
-
-        yaml_frontmatter += "\n---\n\n"
-
-        # Generate intro text
-        intro_text = f"Highlights für das Buch {title} von {firstname} {lastname}"
-        if summary_note:
-            intro_text += f"\n\n> {summary_note}"
+            intro_text += "\n\n" + format_template(
+                templates['summary_note'],
+                note=summary_note
+            )
         intro_text += "\n\n"
 
         # Generate highlights content
@@ -168,14 +279,25 @@ author: {lastname}, {firstname}"""
             if 'notes' not in bookmark or not bookmark['notes'].strip():
                 continue
 
-            # Add the highlighted text as a blockquote
-            highlights_content += f"> {bookmark['notes']}\n\n"
+            # Add the highlighted text using template
+            highlights_content += format_template(
+                templates['highlight'],
+                text=bookmark['notes']
+            ) + "\n\n"
 
             # Add annotations if present
             if 'text' in bookmark and bookmark['text'].strip():
-                highlights_content += f"Own thought:  \n{bookmark['text']}\n\n"
+                # Parse annotation text to extract page and timestamp
+                annotation_data = parse_annotation_text(bookmark['text'])
 
-            highlights_content += "---\n\n"
+                highlights_content += format_template(
+                    templates['annotation'],
+                    annotation=annotation_data['text'],
+                    page=annotation_data['page'],
+                    time=annotation_data['timestamp']
+                ) + "\n\n"
+
+            highlights_content += templates['separator'] + "\n\n"
 
         # Combine all parts
         md = yaml_frontmatter + intro_text + highlights_content.strip()
@@ -250,6 +372,42 @@ def format_date_for_yaml(datetime_str: str) -> str:
         return datetime.now().strftime("%Y-%m-%d")
 
 
+def parse_annotation_text(annotation_text: str) -> Dict[str, str]:
+    """
+    Parse KOReader annotation text to extract page number, timestamp, and clean text.
+
+    Args:
+        annotation_text: Raw annotation text from KOReader
+
+    Returns:
+        Dictionary with 'page', 'text', and 'timestamp' keys
+    """
+    result = {
+        'page': '',
+        'text': annotation_text,
+        'timestamp': ''
+    }
+
+    # Pattern: "Page XXX actual text @ YYYY-MM-DD HH:MM:SS"
+    import re
+
+    # Match page pattern
+    page_match = re.match(r'Page\s+(\d+)\s+(.*)', annotation_text)
+    if page_match:
+        result['page'] = page_match.group(1)
+        remaining_text = page_match.group(2)
+
+        # Match timestamp pattern
+        timestamp_match = re.search(r'(.*)\s+@\s+(\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2})$', remaining_text)
+        if timestamp_match:
+            result['text'] = timestamp_match.group(1).strip()
+            result['timestamp'] = timestamp_match.group(2)
+        else:
+            result['text'] = remaining_text.strip()
+
+    return result
+
+
 def parse_author_name(author_text: str) -> Tuple[str, str]:
     """
     Parse author name into lastname and firstname.
@@ -316,7 +474,12 @@ def save_markdown(markdown: str, output_path: Path) -> None:
     is_flag=True,
     help='Enable verbose logging'
 )
-def main(lua_file: Path, output: Optional[Path], verbose: bool) -> None:
+@click.option(
+    '--config', '-c',
+    type=click.Path(exists=True, path_type=Path, dir_okay=False),
+    help='Path to TOML configuration file'
+)
+def main(lua_file: Path, output: Optional[Path], verbose: bool, config: Optional[Path]) -> None:
     """
     Convert KOReader Lua metadata file to markdown format.
 
@@ -328,11 +491,14 @@ def main(lua_file: Path, output: Optional[Path], verbose: bool) -> None:
         logger.debug("Verbose logging enabled")
 
     try:
+        # Load configuration
+        config = load_config(config)
+
         # Parse the Lua file
         metadata = parse_lua(lua_file)
 
         # Generate markdown content
-        markdown, timestamp = generate_markdown(metadata)
+        markdown, timestamp = generate_markdown(metadata, config)
 
         # Determine output path
         if output is None:

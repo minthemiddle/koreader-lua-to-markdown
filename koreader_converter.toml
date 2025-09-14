@@ -1,0 +1,40 @@
+# KOReader Lua to Markdown Configuration
+# This file allows you to customize the markdown output format
+
+[output]
+# Template for output filename
+# Available placeholders: {timestamp}, {title}, {author}
+filename_template = "{timestamp}.md"
+
+[templates]
+# YAML frontmatter template
+# Available placeholders: {title}, {firstname}, {lastname}, {rating}, {note}, {date_created}, {date_updated}
+yaml_frontmatter = """---
+tags: [buch, gelesen, highlights]
+title: {title}
+author: {lastname}, {firstname}
+rating: {rating}
+date_created: {date_created}
+date_updated: {date_updated}
+---
+
+"""
+
+# Introduction text template
+# Available placeholders: {title}, {firstname}, {lastname}
+intro = "Highlights für das Buch {title} von {firstname} {lastname}"
+
+# Summary note template (if book has a summary/note)
+# Available placeholders: {note}
+summary_note = "Gesamtfazit:\n> {note}"
+
+# Highlight template
+# Available placeholders: {text}
+highlight = "> {text}"
+
+# Annotation template (for personal notes on highlights)
+# Available placeholders: {annotation}, {page}, {time}
+annotation = "Eigener Gedanke: {annotation} ({page})"
+
+# Separator between highlights/annotations
+separator = "---"

@@ -3,6 +3,7 @@
 #   "lupa",
 #   "click",
 #   "rich",
+#   "toml",
 # ]
 # ///
 
@@ -21,6 +22,7 @@ from koreader_lua_to_markdown import (
     parse_lua,
     generate_markdown,
     save_markdown,
+    load_config,
 )
 
 # Configure logging
@@ -57,7 +59,7 @@ def find_metadata_files(input_dir: Path) -> list[Path]:
     return metadata_files
 
 
-def batch_convert(input_dir: Path, output_dir: Path, verbose: bool = False) -> None:
+def batch_convert(input_dir: Path, output_dir: Path, verbose: bool = False, config: Optional[Path] = None) -> None:
     """
     Batch convert all KOReader metadata files to markdown.
 
@@ -65,11 +67,15 @@ def batch_convert(input_dir: Path, output_dir: Path, verbose: bool = False) -> N
         input_dir: Input directory containing KOReader books
         output_dir: Output directory for markdown files
         verbose: Enable verbose logging
+        config: Path to TOML configuration file
     """
     # Configure logging level
     if verbose:
         logging.getLogger().setLevel(logging.DEBUG)
         logger.debug("Verbose logging enabled")
+
+    # Load configuration
+    app_config = load_config(config)
 
     try:
         # Find all metadata files
@@ -111,7 +117,7 @@ def batch_convert(input_dir: Path, output_dir: Path, verbose: bool = False) -> N
                     metadata = parse_lua(metadata_file)
 
                     # Generate markdown content
-                    markdown, timestamp = generate_markdown(metadata)
+                    markdown, timestamp = generate_markdown(metadata, app_config)
 
                     # Generate output filename
                     filename = f"{timestamp}.md"
@@ -180,7 +186,12 @@ def batch_convert(input_dir: Path, output_dir: Path, verbose: bool = False) -> N
     is_flag=True,
     help='Enable verbose logging'
 )
-def main(input_dir: Path, output_dir: Path, verbose: bool) -> None:
+@click.option(
+    '--config', '-c',
+    type=click.Path(exists=True, path_type=Path, dir_okay=False),
+    help='Path to TOML configuration file'
+)
+def main(input_dir: Path, output_dir: Path, verbose: bool, config: Optional[Path]) -> None:
     """
     Batch convert KOReader metadata files to markdown format.
 
@@ -205,7 +216,7 @@ def main(input_dir: Path, output_dir: Path, verbose: bool) -> None:
     console.print(f"🔍 Looking for metadata.epub.lua files in .sdr subdirectories...\n")
 
     # Run batch conversion
-    batch_convert(input_dir, output_dir, verbose)
+    batch_convert(input_dir, output_dir, verbose, config)
 
 
 if __name__ == "__main__":

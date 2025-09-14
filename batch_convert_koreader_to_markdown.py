@@ -125,7 +125,7 @@ def batch_convert(input_dir: Path, output_dir: Path, verbose: bool = False, conf
 
                     # Check if file already exists
                     if output_path.exists():
-                        logger.debug(f"File already exists, skipping: {output_path}")
+                        logger.info(f"⏭️  Skipping {metadata_file.parent.name}: File already exists at {output_path}")
                         skipped += 1
                         progress.advance(task)
                         continue

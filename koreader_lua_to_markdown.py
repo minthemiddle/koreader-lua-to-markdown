@@ -80,12 +80,15 @@ def generate_markdown(metadata: Dict[str, Any]) -> Tuple[str, str]:
         title = stats['title'] if 'title' in stats else 'Unknown Title'
         authors = stats['authors'] if 'authors' in stats else 'Unknown Author'
 
-        # Extract rating from summary
+        # Extract rating and note from summary
         rating = None
+        summary_note = None
         if hasattr(metadata, '__getitem__') and 'summary' in metadata:
             summary = metadata['summary']
             if 'rating' in summary:
                 rating = summary['rating']
+            if 'note' in summary:
+                summary_note = summary['note']
 
         # Parse author name
         lastname, firstname = parse_author_name(authors)
@@ -131,6 +134,9 @@ author: {lastname}, {firstname}"""
         if rating is not None:
             yaml_frontmatter += f"\nrating: {rating}"
 
+        if summary_note:
+            yaml_frontmatter += f"\nnote: {summary_note}"
+
         if created_at:
             date_created = format_date_for_yaml(created_at)
             yaml_frontmatter += f"\ndate_created: {date_created}"
@@ -142,7 +148,10 @@ author: {lastname}, {firstname}"""
         yaml_frontmatter += "\n---\n\n"
 
         # Generate intro text
-        intro_text = f"Highlights für das Buch {title} von {firstname} {lastname}\n\n"
+        intro_text = f"Highlights für das Buch {title} von {firstname} {lastname}"
+        if summary_note:
+            intro_text += f"\n\n> {summary_note}"
+        intro_text += "\n\n"
 
         # Generate highlights content
         highlights_content = ""
